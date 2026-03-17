@@ -33,12 +33,10 @@ def load_components():
     }
 
 components = load_components()
-
-# CLOUD FIX: Force Indian Standard Time (IST)
 ist_now = datetime.utcnow() + timedelta(hours=5.5)
 is_night = ist_now.hour < 6 or ist_now.hour >= 18
 
-# --- UI CONFIGURATION & THEME ENGINE ---
+# --- UI CONFIGURATION ---
 st.set_page_config(page_title="SolarOS 2026", page_icon="☀️", layout="wide")
 
 if "system_ready" not in st.session_state:
@@ -64,7 +62,7 @@ with st.sidebar:
         .stApp {{ background-color: {bg} !important; color: {txt} !important; }}
         [data-testid="stSidebar"] {{ background-color: {side} !important; }}
         [data-testid="stSidebar"] p, [data-testid="stSidebar"] span {{ color: {txt} !important; }}
-        .stVegaLiteChart, canvas {{ background-color: transparent !important; }}
+        .stVegaLiteChart canvas, div[data-testid="stAreaChart"] {{ background-color: transparent !important; }}
         [data-testid="stTable"] td, [data-testid="stTable"] th, .stDataFrame div, .stDataFrame p {{ color: {t_txt} !important; }}
         .telemetry-card {{ background: {side}cc; border-radius: 15px; padding: 20px; border: 1px solid {acc}33; margin-bottom: 20px; }}
         .terminal-text {{ font-family: monospace; color: {acc}; background: #00000022; padding: 10px; border-radius: 5px; }}
@@ -130,18 +128,21 @@ elif menu == "AI Forecast":
     if st.button("Run AI Projection"):
         with st.spinner("Connecting to AI Model..."):
             try:
+                # Get prediction from your secondary .py file
                 prediction_value = components["forecaster"].predict_48h_harvest()
+                
                 if prediction_value is not None:
+                    # Logic for scaling based on your panel area
                     scale = (st.session_state.panel_area / 100) if st.session_state.system_ready else 3.0
                     st.session_state.last_forecast = (prediction_value / 3.0) * scale
-                    st.success("Neural link established!") 
+                    st.success("Neural link established!")
                 else:
                     st.error("Model returned empty data.")
             except Exception as e:
                 st.error(f"Module Error: {e}")
 
-    # FIXED: This now correctly shows the value inside the AI Forecast page
-    if st.session_state.last_forecast:
+    # DISPLAY BLOCK: Placed outside the button click to ensure it persists
+    if st.session_state.last_forecast is not None:
         st.markdown(f"""
             <div class="telemetry-card">
                 <h3 style='margin:0;'>48h Forecast Result</h3>
