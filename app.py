@@ -33,10 +33,12 @@ def load_components():
     }
 
 components = load_components()
+
+# CLOUD FIX: Force Indian Standard Time (IST)
 ist_now = datetime.utcnow() + timedelta(hours=5.5)
 is_night = ist_now.hour < 6 or ist_now.hour >= 18
 
-# --- UI CONFIGURATION ---
+# --- UI CONFIGURATION & THEME ENGINE ---
 st.set_page_config(page_title="SolarOS 2026", page_icon="☀️", layout="wide")
 
 if "system_ready" not in st.session_state:
@@ -62,12 +64,7 @@ with st.sidebar:
         .stApp {{ background-color: {bg} !important; color: {txt} !important; }}
         [data-testid="stSidebar"] {{ background-color: {side} !important; }}
         [data-testid="stSidebar"] p, [data-testid="stSidebar"] span {{ color: {txt} !important; }}
-        
-        /* Graph Transparency Fix */
-        .stVegaLiteChart canvas, div[data-testid="stAreaChart"] {{ 
-            background-color: transparent !important; 
-        }}
-        
+        .stVegaLiteChart, canvas {{ background-color: transparent !important; }}
         [data-testid="stTable"] td, [data-testid="stTable"] th, .stDataFrame div, .stDataFrame p {{ color: {t_txt} !important; }}
         .telemetry-card {{ background: {side}cc; border-radius: 15px; padding: 20px; border: 1px solid {acc}33; margin-bottom: 20px; }}
         .terminal-text {{ font-family: monospace; color: {acc}; background: #00000022; padding: 10px; border-radius: 5px; }}
@@ -128,7 +125,7 @@ if menu == "Overview":
 
 elif menu == "AI Forecast":
     st.title("Atmospheric Prediction")
-    st.write("Click below to run the neural network simulation based on current satellite data.")
+    st.write("Click below to run the neural network simulation.")
     
     if st.button("Run AI Projection"):
         with st.spinner("Connecting to AI Model..."):
@@ -143,6 +140,7 @@ elif menu == "AI Forecast":
             except Exception as e:
                 st.error(f"Module Error: {e}")
 
+    # FIXED: This now correctly shows the value inside the AI Forecast page
     if st.session_state.last_forecast:
         st.markdown(f"""
             <div class="telemetry-card">
@@ -153,4 +151,45 @@ elif menu == "AI Forecast":
         """, unsafe_allow_html=True)
 
 elif menu == "Live Telemetry":
-    st.title("
+    st.title("Real-Time Hardware Link")
+    if not st.session_state.system_ready:
+        st.error("No Hardware Link detected.")
+    else:
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            st.markdown('<div class="telemetry-card">', unsafe_allow_html=True)
+            st.subheader("ߓ Live Feed Status")
+            if is_night:
+                st.info(f"System Hibernating (Night Mode active in {user_state})")
+                st.metric("Live Output", "0.00 W", delta="Offline")
+            else:
+                power = ((st.session_state.panel_area/100) * 1000) * random.uniform(0.88, 0.95)
+                st.metric("Live Array Output", f"{power:.2f} W", delta=f"{random.uniform(-5, 5):.1f}W")
+                st.progress(random.uniform(0.7, 0.95), text="Inverter Efficiency")
+            st.markdown(f'<p class="terminal-text">> Time Sync: {ist_now.strftime("%H:%M IST")}<br>> Status: {user_state} Grid Active</p>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+        with col2:
+            st.markdown('<div class="telemetry-card">', unsafe_allow_html=True)
+            st.subheader("ߌ Impact")
+            st.write(f"**{(st.session_state.panel_area/50):.1f}** Trees planted equiv.")
+            st.markdown('</div>', unsafe_allow_html=True)
+
+elif menu == "Subsidy Hub":
+    st.title("Government Incentives 2026")
+    kw_plan = st.slider("Target System Size (kW)", 1.0, 10.0, 3.0)
+    res = components["gov_bot"].calculate_subsidy(kw_plan)
+    state_bonus = 20000 if user_state == "Odisha" and kw_plan >= 3 else 0
+    st.subheader(f"Total Benefit: Rs. {res['estimated_subsidy'] + state_bonus:,.0f}")
+    c1, c2 = st.columns(2)
+    c1.info("Step 1: Registration on National Portal")
+    c1.info("Step 2: Technical Feasibility Inspection")
+    c2.info("Step 3: Installation via Empanelled Vendor")
+    c2.info("Step 4: Joint Inspection & Subsidy Release")
+    with st.expander("Required Documentation List"):
+        for step in res['steps']:
+            st.write(f"• {step}")
+
+elif menu == "Market Hub":
+    st.title("Solar Price Index")
+    prices_df = components["scraper"].get_latest_prices()
+    st.dataframe(prices_df, use_container_width=True)
