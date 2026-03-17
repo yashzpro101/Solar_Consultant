@@ -1,5 +1,5 @@
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timedelta
 import random
 import os
 import pandas as pd
@@ -10,7 +10,6 @@ from gov_subsidy_bot import GovGuide
 from savings_tracker import SavingsTracker
 from hardware_link import HardwareConnector
 
-
 # --- SYSTEM UTILITIES ---
 def register_user(name):
     log_file = "users_log.txt"
@@ -18,11 +17,10 @@ def register_user(name):
     if os.path.exists(log_file):
         with open(log_file, "r") as f:
             count = len(f.readlines()) + 1
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = (datetime.utcnow() + timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S")
     with open(log_file, "a") as f:
         f.write(f"User {count}: {name} | {timestamp}\n")
     return count
-
 
 @st.cache_resource
 def load_components():
@@ -34,61 +32,42 @@ def load_components():
         "hardware": HardwareConnector()
     }
 
-
 components = load_components()
-is_night = datetime.now().hour < 6 or datetime.now().hour >= 18
 
-# --- UI CONFIGURATION ---
+# CLOUD FIX: Force Indian Standard Time (IST) regardless of where the server is
+ist_now = datetime.utcnow() + timedelta(hours=5.5)
+is_night = ist_now.hour < 6 or ist_now.hour >= 18
+
+# --- UI CONFIGURATION & THEME ENGINE ---
 st.set_page_config(page_title="SolarOS 2026", page_icon="☀️", layout="wide")
 
 if "system_ready" not in st.session_state:
     st.session_state.system_ready = False
 if "panel_area" not in st.session_state:
     st.session_state.panel_area = 300
+if "last_forecast" not in st.session_state:
+    st.session_state.last_forecast = None
 
 with st.sidebar:
     st.title("Settings")
     theme_choice = st.selectbox("Dashboard Theme", ["Midnight Black", "Eco Green", "Solar Yellow"])
-
-    # Theme Map: Background, Main Text, Sidebar, Accent, Data Text
+    
     themes = {
         "Midnight Black": ("#0E1117", "#FFFFFF", "#1E1E1E", "#007BFF", "#FFFFFF"),
         "Eco Green": ("#F0F7F4", "#1E3D33", "#D1E8E2", "#2D6A4F", "#1E3D33"),
         "Solar Yellow": ("#FFFDF0", "#4A4A00", "#FFF9C4", "#F9A825", "#4A4A00")
     }
-    bg, txt, side, acc, d_txt = themes[theme_choice]
+    bg, txt, side, acc, t_txt = themes[theme_choice]
 
     st.markdown(f"""
         <style>
-        /* Global Background and Text */
         .stApp {{ background-color: {bg} !important; color: {txt} !important; }}
         [data-testid="stSidebar"] {{ background-color: {side} !important; }}
         [data-testid="stSidebar"] p, [data-testid="stSidebar"] span {{ color: {txt} !important; }}
-
-        /* THEME FIX: Table & Dataframe Text Visibility */
-        .stDataFrame div, .stDataFrame p, [data-testid="stTable"] td, [data-testid="stTable"] th {{
-            color: {d_txt} !important;
-        }}
-
-        /* THEME FIX: Removing Black Graph Background */
-        .stVegaLiteChart, canvas {{ 
-            background-color: transparent !important; 
-            border-radius: 15px;
-        }}
-
-        /* Metric Box Styling */
-        .stMetric {{ 
-            border: 1px solid {acc}33 !important; 
-            background-color: {side} !important; 
-            padding: 15px; border-radius: 12px; 
-        }}
-        [data-testid="stMetricValue"] > div {{ color: {acc} !important; }}
-        [data-testid="stMetricLabel"] > div {{ color: {d_txt} !important; }}
-
-        /* Telemetry Elements */
+        .stVegaLiteChart, canvas {{ background-color: transparent !important; }}
+        [data-testid="stTable"] td, [data-testid="stTable"] th, .stDataFrame div, .stDataFrame p {{ color: {t_txt} !important; }}
         .telemetry-card {{ background: {side}cc; border-radius: 15px; padding: 20px; border: 1px solid {acc}33; margin-bottom: 20px; }}
         .terminal-text {{ font-family: monospace; color: {acc}; background: #00000022; padding: 10px; border-radius: 5px; }}
-
         h1, h2, h3 {{ color: {acc} !important; font-weight: 700 !important; }}
         div.stButton > button {{ background-color: {acc} !important; color: white !important; border-radius: 8px !important; }}
         </style>
@@ -125,9 +104,7 @@ current_rate = Config.STATE_RATES.get(user_state, 7.0)
 
 if menu == "Overview":
     if not st.session_state.system_ready:
-        st.markdown(
-            f'<div class="telemetry-card"><h1>Welcome to SolarOS 2026</h1><p>Awaiting hardware configuration for {user_state}.</p></div>',
-            unsafe_allow_html=True)
+        st.markdown(f'<div class="telemetry-card"><h1>Welcome to SolarOS 2026</h1><p>Awaiting hardware configuration for {user_state}.</p></div>', unsafe_allow_html=True)
         with st.popover("ߚ Configure Array"):
             st.session_state.panel_area = st.number_input("Panel Area (sq ft):", 50, 10000, st.session_state.panel_area)
             if st.button("Finalize Installation"):
@@ -139,14 +116,11 @@ if menu == "Overview":
         units = user_kw * 120
         history = [units * f * current_rate for f in [0.95, 1.1, 0.9, 1.2, 1.3, 1.1]]
         data = components["tracker"].generate_dashboard_data(history)
-
         c1, c2, c3 = st.columns(3)
-        c1.metric("Financial Savings", f"Rs. {data['total_savings']:,.0f}", delta=f"Rs. {history[-1] * 0.05:,.0f}")
+        c1.metric("Financial Savings", f"Rs. {data['total_savings']:,.0f}")
         c2.metric("Carbon Saved", f"{data['co2_saved_kg']:,.1f} kg")
         c3.metric("State Unit Rate", f"Rs. {current_rate}")
-
         st.subheader("Monthly Savings Trend")
-        # FORCE THEME: Setting the chart color to match the theme accent
         st.area_chart(data["history_df"].set_index("Month")["Savings"], color=acc)
 
 elif menu == "AI Forecast":
@@ -155,7 +129,10 @@ elif menu == "AI Forecast":
         with st.spinner("Analyzing satellite feed..."):
             pred = components["forecaster"].predict_48h_harvest()
             scale = (st.session_state.panel_area / 100) if st.session_state.system_ready else 3.0
-            st.success(f"Estimated Generation (48h): {(pred / 3.0) * scale:.2f} kWh")
+            st.session_state.last_forecast = (pred / 3.0) * scale
+
+    if st.session_state.last_forecast:
+        st.success(f"Estimated Generation (48h): {st.session_state.last_forecast:.2f} kWh")
 
 elif menu == "Live Telemetry":
     st.title("Real-Time Hardware Link")
@@ -167,19 +144,18 @@ elif menu == "Live Telemetry":
             st.markdown('<div class="telemetry-card">', unsafe_allow_html=True)
             st.subheader("ߓ Live Feed Status")
             if is_night:
-                st.info("System Hibernating (Night Mode active)")
+                st.info(f"System Hibernating (Night Mode active in {user_state})")
+                st.metric("Live Output", "0.00 W", delta="Offline")
             else:
-                power = ((st.session_state.panel_area / 100) * 1000) * random.uniform(0.88, 0.95)
+                power = ((st.session_state.panel_area/100) * 1000) * random.uniform(0.88, 0.95)
                 st.metric("Live Array Output", f"{power:.2f} W", delta=f"{random.uniform(-5, 5):.1f}W")
                 st.progress(random.uniform(0.7, 0.95), text="Inverter Efficiency")
-            st.markdown(
-                f'<p class="terminal-text">> Link: SUCCESS<br>> Voltage: 48.2V<br>> State: {user_state} Grid Active</p>',
-                unsafe_allow_html=True)
+            st.markdown(f'<p class="terminal-text">> Time Sync: {ist_now.strftime("%H:%M IST")}<br>> Status: {user_state} Grid Active</p>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
         with col2:
             st.markdown('<div class="telemetry-card">', unsafe_allow_html=True)
             st.subheader("ߌ Impact")
-            st.write(f"**{(st.session_state.panel_area / 50):.1f}** Trees planted equiv.")
+            st.write(f"**{(st.session_state.panel_area/50):.1f}** Trees planted equiv.")
             st.markdown('</div>', unsafe_allow_html=True)
 
 elif menu == "Subsidy Hub":
@@ -188,8 +164,6 @@ elif menu == "Subsidy Hub":
     res = components["gov_bot"].calculate_subsidy(kw_plan)
     state_bonus = 20000 if user_state == "Odisha" and kw_plan >= 3 else 0
     st.subheader(f"Total Benefit: Rs. {res['estimated_subsidy'] + state_bonus:,.0f}")
-
-    st.markdown("### ߗ️ Your Roadmap to Solar")
     c1, c2 = st.columns(2)
     c1.info("Step 1: Registration on National Portal")
     c1.info("Step 2: Technical Feasibility Inspection")
@@ -201,6 +175,5 @@ elif menu == "Subsidy Hub":
 
 elif menu == "Market Hub":
     st.title("Solar Price Index")
-    st.write(f"Live Market Rates: {user_state}")
     prices_df = components["scraper"].get_latest_prices()
     st.dataframe(prices_df, use_container_width=True)
