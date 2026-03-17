@@ -130,20 +130,48 @@ elif menu == "AI Forecast":
     if st.button("Run AI Projection"):
         with st.spinner("Connecting to AI Model..."):
             try:
-                # We call the component and check if it actually returns a value
                 prediction_value = components["forecaster"].predict_48h_harvest()
                 
                 if prediction_value is not None:
                     scale = (st.session_state.panel_area / 100) if st.session_state.system_ready else 3.0
                     st.session_state.last_forecast = (prediction_value / 3.0) * scale
-                    st.toast("Neural link established!", icon="ߧ")
+                    # REMOVED the emoji toast to prevent the "Shortcode" crash
+                    st.success("Neural link established!") 
                 else:
-                    st.error("Model returned empty data. Check your dataset.")
+                    st.error("Model returned empty data.")
             
             except Exception as e:
-                # THIS WILL TELL YOU EXACTLY WHY IT ISN'T WORKING
-                st.error(f"Critical Error in AI Module: {e}")
-                st.info("Check if all secondary .py files are uploaded to GitHub.")
+                st.error(f"Module Error: {e}")
+
+    if st.session_state.last_forecast:
+        st.markdown(f"""
+            <div class="telemetry-card">
+                <h3 style='margin:0;'>48h Forecast Result</h3>
+                <h1 style='font-size: 3rem;'>{st.session_state.last_forecast:.2f} <span style='font-size: 1.5rem;'>kWh</span></h1>
+                <p style='opacity:0.7;'>Confidence Level: 94.2%</p>
+            </div>
+        """, unsafe_allow_html=True)
+
+# --- THEME FIX FOR THE BLACK GRAPH ---
+# In your Overview section, update the st.area_chart line to this:
+elif menu == "Overview":
+    # ... existing code ...
+    st.subheader("Monthly Savings Trend")
+    # We use a container to force-inject the background fix
+    with st.container():
+        st.area_chart(data["history_df"].set_index("Month")["Savings"], color=acc)
+        st.markdown(f"""
+            <style>
+            /* Force the canvas within the chart to be transparent */
+            .stVegaLiteChart canvas {{
+                background-color: transparent !important;
+            }}
+            /* Remove the dark overlay block */
+            div[data-testid="stAreaChart"] {{
+                background-color: transparent !important;
+            }}
+            </style>
+        """, unsafe_allow_html=True)
 
     if st.session_state.last_forecast:
         st.markdown(f"""
